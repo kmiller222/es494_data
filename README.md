@@ -1,9 +1,3 @@
----
-title: "Capstone Code"
-author: "Kirsten Miller"
-date: "12/07/2020"
-output: html_document
----
 
 ```{r setup, include=FALSE}
 # Capstone Final Plot Code
