@@ -1,2 +1,227 @@
-## ES494 data analysis
+---
+title: "Capstone Code"
+author: "Kirsten Miller"
+date: "12/07/2020"
+output: html_document
+---
 
+```{r setup, include=FALSE}
+# Capstone Final Plot Code
+# load packages
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(lubridate)
+library(stringr)
+library(vegan) # for diversity indices
+library(gridExtra)
+# import data file 1
+dat <- read.csv("data_sheet.csv")
+dat1 <- dat %>% 
+  select(ID, Site, Date, Diatoms, Dinoflagellates, 
+         Cyanobacteria, Chlorophyta, Chrysophyta, TotalCells) %>% 
+  na.omit(dat) # omit rows with NA values
+```
+
+```{r}
+# df with proportions
+dat_prop <- dat1 %>% 
+  mutate(Diatoms_prop = Diatoms/TotalCells,
+        Dinoflagellates_prop = Dinoflagellates/TotalCells,
+        Cyanobacteria_prop = Cyanobacteria/TotalCells,
+        Chlorophyta_prop = Chlorophyta/TotalCells,
+        Chrysophyta_prop = Chrysophyta/TotalCells,
+        uniqueID = paste(Date, Site),
+        Date = as.character(Date),
+        Month = str_split_fixed(Date, "/", 2)[ ,1],
+        Day = str_split_fixed(Date, "/", 2)[ ,2],
+        Date = dmy(paste(Day, Month, 2020)))
+# df for pie chart 
+dat_pie_prop <- dat_prop %>% 
+  select(-Diatoms, -Dinoflagellates, -Cyanobacteria, -Chlorophyta, -Chrysophyta, -TotalCells) %>% 
+  pivot_longer(cols = 4:8, names_to = "phyto_type") %>% 
+  group_by(ID) 
+# pie chart of proportions for each sample
+ggplot(dat_pie_prop, aes(x="", y=value, fill=phyto_type)) +
+  facet_wrap(~ ID, ncol = 10) +
+  geom_bar(stat="identity", width=1) +
+  coord_polar("y") + 
+  scale_fill_manual(values=c("#24AB55", "#FF7A32", "#FFC433", 
+                             "#308DF5","#D83535"),
+                    labels=c("Chlorophytes", "Chrysophytes", "Cyanobacteria", 
+                             "Diatoms", "Dinoflagellates"),
+                    name="Phytoplankton taxonmic group") +
+  ylab("Site") + xlab("Date") +
+  theme(axis.text.x=element_blank()) +
+  ggtitle("Proportion of phytoplankton taxonomic groups in each sample")
+```  
+
+```{r}  
+# line plot proportions for each site over time
+dat_line_prop <- dat_prop %>% 
+  select(-Diatoms, -Dinoflagellates, -Cyanobacteria, -Chlorophyta, -Chrysophyta, -TotalCells) %>% 
+  pivot_longer(cols = 4:8, names_to = "phyto_type") %>% 
+  group_by(Site)
+ggplot(dat_line_prop, aes(x=Date, y=value, color=phyto_type)) +
+  facet_wrap(~ Site, nrow =2) + geom_line() + 
+  scale_color_manual(values=c("#24AB55", "#FF7A32", "#FFC433", 
+                               "#308DF5","#D83535", "black"),
+                     labels=c("Chlorophytes", "Chrysophytes", "Cyanobacteria", 
+                              "Diatoms", "Dinoflagellates"),
+                     name="Phytoplankton taxonomic group") +
+  theme_classic() + ylab("Proportion") +
+  theme(legend.position="bottom") +
+  guides(col = guide_legend(nrow = 1, byrow = TRUE)) +
+  theme(legend.text=element_text(size=12))
+```
+
+```{r}
+# 5 taxonomic groups averaged by date over time
+dateavg_datp <- dat_prop %>% 
+  group_by(Date) %>% 
+  summarise(Diatoms_mean = mean(Diatoms_prop),
+            Dinoflagellates_mean = mean(Dinoflagellates_prop),
+            Cyanobacteria_mean = mean(Cyanobacteria_prop),
+            Chlorophyta_mean = mean(Chlorophyta_prop),
+            Chrysophyta_mean = mean(Chrysophyta_prop)) %>% 
+  pivot_longer(cols = -1, names_to = "phyto_type")
+# Create date vector (IMPORTANT FOR ALL PLOTS FOLLOWING)
+dates <- unique(dateavg_datp$Date)
+# most important capstone plot: phyto community structure over time
+ggplot(dateavg_datp, aes(x=Date, y=value, color=phyto_type)) + geom_line() + geom_point() +
+  scale_color_manual(values=c("#24AB55", "#FF7A32", "#FFC433", 
+                              "#308DF5","#D83535", "black"),
+                     labels=c("Chlorophytes", "Chrysophytes", "Cyanobacteria", 
+                              "Diatoms", "Dinoflagellates"),
+                     name="Phytoplankton taxonomic group") +
+  theme_classic() + ylab("Proportion") + 
+  scale_x_date(breaks = dates, date_labels = "%b %d") +
+  theme(legend.position="bottom") +
+  guides(col = guide_legend(nrow = 3, byrow = TRUE))
+```
+
+```{r}
+# Simpson and Shannon Diversity indices plots
+phytoData2 <- read.csv("sites_data.csv") #load phytoplankton data
+phytoData3 <- phytoData2 %>% 
+  mutate(Date = as.character(Date),
+         Month = str_split_fixed(Date, "/", 2)[ ,1],
+         Day = str_split_fixed(Date, "/", 2)[ ,2],
+         Date = dmy(paste(Day, Month, 2020)))
+phytoData3$simpDiversity <- diversity(phytoData2[,3:7], "simpson") #simpson index
+phytoData3$shanDiversity <- diversity(phytoData2[,3:7], "shannon") #shannon index
+# simpson boxplot
+ggplot(phytoData3, aes(x = Date, y = simpDiversity, group = Date)) + 
+  geom_boxplot() + ylab("Simpson Diversity Index") +
+  scale_x_date(breaks = dates, date_labels = "%b %d") + theme_classic()
+# shannon boxplot
+ggplot(phytoData3, aes(x = Date, y = shanDiversity, group = Date)) + 
+  geom_boxplot(fill = "bisque") + ylab("Shannon Diversity Index")
+```
+
+```{r}
+# Boxplot and ANOVA tests
+# boxplots
+ggplot(dat_prop, aes(x = Date, y = Cyanobacteria_prop, group = Date)) + 
+  geom_boxplot(fill = "bisque") + ylab("Proportion of Cyanobacteria") +
+  theme_classic() + scale_x_date(breaks = dates, date_labels = "%b %d")
+# anova
+anova.test <- anova(lm(Cyanobacteria_prop ~ Date, dat_prop))
+# anova test for difference in date
+as.factor(dat_prop$Date) -> dat_prop$Date
+aov(Cyanobacteria_prop ~ Date, dat_prop) -> aov.test
+summary(aov.test)
+TukeyHSD(aov.test)
+# anova test for difference in site
+anova.test_cyano_site <- anova(lm(Cyanobacteria_prop ~ Site, dat_prop))
+aov.test_cyano_site <- aov(Cyanobacteria_prop ~ Site, dat_prop)
+summary(aov.test_cyano_site)
+TukeyHSD(aov.test_cyano_site)
+```
+
+```{r, warning= FALSE}
+# Environmental Variables plots
+# import the data
+env_dat <- read.csv("environmental_variables_data.csv")
+env_dat2 <- env_dat %>% 
+  mutate(Date = as.character(Date),
+         Month = str_split_fixed(Date, "/", 2)[ ,1],
+         Day = str_split_fixed(Date, "/", 2)[ ,2],
+         Date = dmy(paste(Day, Month, 2020)))
+# Chl-a and cyano final plot
+coeff <- 100
+# create plot 
+ggplot(env_dat2, aes(x=Date)) +
+  geom_line(aes(y=Prop_cyano, color = "Proportion of Cyanobacteria")) + 
+  geom_point(aes(y=Prop_cyano, color = "Proportion of Cyanobacteria")) +
+  geom_line(aes(y=Chl_a_conc / coeff, color = "Chl-a concentration")) + 
+  geom_point(aes(y=Chl_a_conc / coeff, color = "Chl-a concentration")) +
+  scale_y_continuous(name = "Proportion of Cyanobacteria",
+    sec.axis = sec_axis(~.*coeff, name="Chl-a concentration")) +
+  theme_classic() + scale_x_date(breaks = dates, date_labels = "%b %d") +
+  theme(legend.position="bottom") +
+  guides(col = guide_legend(nrow = 1, byrow = TRUE)) +
+  theme(legend.text=element_text(size=12), 
+        axis.text=element_text(size=12),
+        axis.title =element_text(size =14))
+# load the nutrient data
+nut_datb <- read.csv("nutrientdat copy.csv")
+# correlation: cyano vs nutrient ratio 
+ggplot(nut_datb, aes(x = din_srp_ratio, y=cyano_prop)) + geom_point() +
+  ylab("Proportion of Cyanobacteria") + xlab("DIN:SRP ratio") +
+  theme_classic() + stat_smooth(method ="lm")
+regression1 <- lm(cyano_prop ~ din_srp_ratio, dat = nut_datb)
+summary(regression1)
+```
+
+```{r}
+# Abiotic factors plots
+se_samp_dat <- read.csv("sites_environmental_data.csv")
+se_samp_dat2 <- se_samp_dat %>% 
+  mutate(Date = as.character(Date),
+         Month = str_split_fixed(Date, "/", 2)[ ,1],
+         Day = str_split_fixed(Date, "/", 2)[ ,2],
+         Date = dmy(paste(Day, Month, 2020))) %>% 
+  select(-Month, -Day)
+# average by date
+se_samp_dat_sum <- se_samp_dat2 %>%   
+  group_by(Date) %>% 
+  summarise(avg_s.m = mean(S.m),
+            avg_temp = mean(Temp),
+            avg_secchi = mean(Secchi))
+# errors table
+error_se_samp_dat_sum <- se_samp_dat2 %>%   
+  group_by(Date) %>% 
+  summarise(s.m_se = mean(S.m_se),
+            temp_se = mean(Temp_se),
+            secchi_se = mean(Secchi_se))
+# flip errors table
+error_flip <- error_se_samp_dat_sum %>% 
+  rename("Mean Secchi Depth (m)" = secchi_se,
+         "Mean Temperature (˚C)" = temp_se,
+         "Mean Conductivity (S/m)" = s.m_se) %>% 
+  pivot_longer(cols = 2:4, names_to = "Variable") %>% 
+  arrange(Date, Variable) %>% 
+  mutate(unique_id = c(1:18)) %>% 
+  rename("se" = value)
+# plot df
+se_samp_dat_flip <- se_samp_dat_sum %>% 
+  rename("Mean Secchi Depth (m)" = avg_secchi,
+         "Mean Temperature (˚C)" = avg_temp,
+         "Mean Conductivity (S/m)" = avg_s.m) %>% 
+  pivot_longer(cols = 2:4, names_to = "Variable") %>% 
+  arrange(Date, Variable) %>% 
+  mutate(unique_id = c(1:18))
+# join the dfs
+se_samp_dat_plot <- left_join(se_samp_dat_flip, error_flip, by = "unique_id")
+se_samp_dat_plot2 <- se_samp_dat_plot %>% 
+  rename("Date" = Date.x,
+         "Variable" = Variable.x) %>% 
+  select(Date, Variable, value, se)
+# 3 tier env variable plot for our SAMPLE data:
+ggplot(se_samp_dat_plot2, aes(x=Date, y=value, group = 1, col = Variable)) +  
+  geom_line() + geom_point() +
+  geom_errorbar(aes(ymin=value-se, ymax=value+se), width=.2) +
+  facet_grid(Variable ~ ., scales = "free") + theme_classic() +
+  scale_x_date(breaks = dates, date_labels = "%b %d")
+```
